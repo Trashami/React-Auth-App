@@ -1,0 +1,9 @@
+{
+    "appName": "React GeoJason App",
+    "apiSources": {
+      "userApi": "https://jsonplaceholder.typicode.com/users",
+      "productApi": "https://api.tvmaze.com/shows"
+    }
+  }
+  
+  
