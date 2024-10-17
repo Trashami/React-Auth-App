@@ -1,4 +1,3 @@
-
 const Home = ({ appName }) => {
   return (
     <div className="home">

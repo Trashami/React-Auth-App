@@ -9,7 +9,7 @@ const BodyContent = ({ activeView, appConfig }) => {
       return (
         <Profile
           userApi={appConfig.apiSources.userApi}
-          tableName={appConfig.apiSources.listTitle} // Ensure this is the correct path to the table name
+          tableName={appConfig.apiSources.listTitle}
         />
       );
     default:

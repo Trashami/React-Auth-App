@@ -10,14 +10,14 @@ export const msalConfig = {
     }
 };
 
-// For Microsoft Graph API (Profile picture, user data)
+// For Microsoft Graph API
 export const loginRequest = {
     scopes: ["User.Read", 
         "Sites.ReadWrite.All"
     ]
 };
 
-// For SharePoint API (Access SharePoint data)
+// For SharePoint API
 export const silentRequest = {
     scopes: ["https://tularecountycagcc.sharepoint.com/.default"]
 };

@@ -26,7 +26,6 @@ const Header = ({ appName, toggleSidebar, isMobile }) => {
     setShowUserCard((prev) => !prev);
   };
 
-  // Fetch profile picture from Microsoft Graph
   useEffect(() => {
     if (user && inProgress === "none") {
       instance

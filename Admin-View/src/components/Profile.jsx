@@ -33,7 +33,6 @@ const Profile = ({ userApi }) => {
         account: user,
       });
   
-      // Get list metadata including its title
       const listInfoUrl = userApi.replace("/items", "");
       const listInfoResponse = await fetch(listInfoUrl, {
         headers: {
@@ -50,7 +49,6 @@ const Profile = ({ userApi }) => {
       const listInfo = await listInfoResponse.json();
       setListTitle(listInfo.Title || "Desks List");
   
-      // Fetch list items
       const response = await fetch(userApi, {
         headers: {
           Authorization: `Bearer ${tokenResponse.accessToken}`,
@@ -192,7 +190,6 @@ const Profile = ({ userApi }) => {
         {showOnlyActive ? "Show All Desks" : "Show Only Active Desks"}
       </button>
 
-      {/* Modal for Create/Edit */}
       {showModal && (
         <div className="modal show d-block" tabIndex="-1" role="dialog">
           <div className="modal-dialog" role="document">
@@ -263,7 +260,6 @@ const Profile = ({ userApi }) => {
         </div>
       )}
 
-      {/* Modal for View */}
       {viewData && (
         <div className="modal show d-block" tabIndex="-1" role="dialog">
           <div className="modal-dialog" role="document">
