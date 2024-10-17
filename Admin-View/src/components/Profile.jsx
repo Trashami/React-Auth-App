@@ -1,159 +1,341 @@
-import { useState, useEffect, useRef } from "react";
-import $ from "jquery";
-import "datatables.net";
-import "datatables.net-dt/css/dataTables.dataTables.css";
-import { Button, Modal, Form } from "react-bootstrap";
+import { useState, useEffect } from "react";
+import $ from 'jquery';
+import 'datatables.net-bs5/css/dataTables.bootstrap5.css';
+import 'datatables.net';
+import { useMsal } from "@azure/msal-react";
+import { loginRequest, silentRequest } from "../auth/authConfig";
+import { InteractionRequiredAuthError } from "@azure/msal-browser";
+import 'bootstrap/dist/css/bootstrap.min.css';
 
 const Profile = ({ userApi }) => {
-  const [users, setUsers] = useState([]);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [editUser, setEditUser] = useState(null);
-  const [formData, setFormData] = useState({ name: "", email: "" });
-  const tableRef = useRef();
+  const [formData, setFormData] = useState({ Title: "", Description: "", Floor: "", Active: "true" });
+  const [editMode, setEditMode] = useState(false);
+  const [viewData, setViewData] = useState(null);
+  const [selectedItemId, setSelectedItemId] = useState(null);
+  const [showOnlyActive, setShowOnlyActive] = useState(false);
+  const { instance, accounts } = useMsal();
+  const user = accounts[0];
+  const [listTitle, setListTitle] = useState("Desks List");
 
   useEffect(() => {
-    fetch(userApi)
-      .then((response) => response.json())
-      .then((data) => {
-        setUsers(data);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error("Error fetching users:", error);
-        setLoading(false);
-      });
-  }, [userApi]);
-
-  useEffect(() => {
-    if (!loading && users.length > 0) {
-      const table = $(tableRef.current).DataTable({
-        paging: true,
-        searching: true,
-        info: true,
-        destroy: true,
-      });
-
-      return () => {
-        table.destroy();
-      };
+    if (user) {
+      fetchSharePointData();
     }
-  }, [loading, users]);
+  }, [user, userApi]);
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const fetchSharePointData = async () => {
+    try {
+      const tokenResponse = await instance.acquireTokenSilent({
+        ...silentRequest,
+        account: user,
+      });
+  
+      // Get list metadata including its title
+      const listInfoUrl = userApi.replace("/items", "");
+      const listInfoResponse = await fetch(listInfoUrl, {
+        headers: {
+          Authorization: `Bearer ${tokenResponse.accessToken}`,
+          Accept: "application/json",
+        },
+      });
+  
+      if (!listInfoResponse.ok) {
+        const errorText = await listInfoResponse.text();
+        throw new Error(`HTTP error! Status: ${listInfoResponse.status}, Message: ${errorText}`);
+      }
+  
+      const listInfo = await listInfoResponse.json();
+      setListTitle(listInfo.Title || "Desks List");
+  
+      // Fetch list items
+      const response = await fetch(userApi, {
+        headers: {
+          Authorization: `Bearer ${tokenResponse.accessToken}`,
+          Accept: "application/json",
+        },
+      });
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
+      }
+  
+      const data = await response.json();
+      setItems(data.value);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching items from SharePoint:", error);
+      setLoading(false);
+    }
+  };
+  
+  const handleShowModal = () => {
+    setFormData({ Title: "", Description: "", Floor: "", Active: "true" });
+    setEditMode(false);
+    setShowModal(true);
   };
 
-  const handleShowModal = (user = null) => {
-    setEditUser(user);
-    setFormData(user ? { name: user.name, email: user.email } : { name: "", email: "" });
+  const handleEdit = (item) => {
+    setFormData({ Title: item.Title, Description: item.Description, Floor: item.Floor, Active: item.Active ? "true" : "false" });
+    setSelectedItemId(item.Id);
+    setEditMode(true);
     setShowModal(true);
+  };
+
+  const handleView = (item) => {
+    setViewData(item);
+  };
+
+  const handleDelete = async (itemId) => {
+    if (window.confirm("Are you sure you want to delete this desk?")) {
+      try {
+        const tokenResponse = await instance.acquireTokenSilent({
+          ...loginRequest,
+          account: user,
+        });
+
+        const apiUrl = `${userApi}(${itemId})`;
+
+        const response = await fetch(apiUrl, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${tokenResponse.accessToken}`,
+            Accept: "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
+        }
+
+        setItems(items.filter((item) => item.Id !== itemId));
+      } catch (error) {
+        console.error("Error deleting desk:", error);
+      }
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      const tokenResponse = await instance.acquireTokenSilent({
+        ...loginRequest,
+        account: user,
+      });
+
+      const method = editMode ? "PATCH" : "POST";
+      const apiUrl = editMode ? `${userApi}(${selectedItemId})` : userApi;
+
+      const response = await fetch(apiUrl, {
+        method,
+        headers: {
+          Authorization: `Bearer ${tokenResponse.accessToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Title: formData.Title,
+          Description: formData.Description,
+          Floor: formData.Floor,
+          Active: formData.Active === "true",
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
+      }
+
+      const updatedItem = await response.json();
+      if (editMode) {
+        setItems(items.map((item) => (item.Id === selectedItemId ? updatedItem : item)));
+      } else {
+        setItems((prevItems) => [...prevItems, updatedItem]);
+      }
+
+      handleCloseModal();
+    } catch (error) {
+      console.error("Error saving desk:", error);
+    }
   };
 
   const handleCloseModal = () => {
     setShowModal(false);
-    setEditUser(null);
+    setViewData(null);
   };
 
-  const handleFormSubmit = () => {
-    if (editUser) {
-
-      const updatedUsers = users.map((user) =>
-        user.id === editUser.id ? { ...user, ...formData } : user
-      );
-      setUsers(updatedUsers);
-    } else {
-
-      const newUser = {
-        id: users.length + 1,
-        name: formData.name,
-        email: formData.email,
-      };
-      setUsers([...users, newUser]);
-    }
-    handleCloseModal();
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
   };
 
-  const handleDeleteUser = (userId) => {
-    const updatedUsers = users.filter((user) => user.id !== userId);
-    setUsers(updatedUsers);
+  const handleFilterToggle = () => {
+    setShowOnlyActive((prev) => !prev);
   };
+
+  const filteredItems = showOnlyActive ? items.filter((item) => item.Active) : items;
 
   if (loading) {
-    return <div>Loading user data...</div>;
+    return <div>Loading data...</div>;
   }
 
   return (
     <div>
-      <h1>User Profiles</h1>
-      <Button variant="primary" onClick={() => handleShowModal()}>
-        Add User
-      </Button>
-      <div className="table-responsive mt-3">
-        <table ref={tableRef} className="table table-striped">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <tr key={user.id}>
-                <td>{user.id}</td>
-                <td>{user.name}</td>
-                <td>{user.email}</td>
-                <td>
-                  <Button variant="warning" onClick={() => handleShowModal(user)}>
-                    Edit
-                  </Button>{" "}
-                  <Button variant="danger" onClick={() => handleDeleteUser(user.id)}>
-                    Delete
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <h1>{listTitle}</h1>
+      <button className="btn btn-primary" onClick={handleShowModal}>
+        Create New Desk
+      </button>{" "}
+      <button className="btn btn-secondary" onClick={handleFilterToggle}>
+        {showOnlyActive ? "Show All Desks" : "Show Only Active Desks"}
+      </button>
 
-      <Modal show={showModal} onHide={handleCloseModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>{editUser ? "Edit User" : "Add User"}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Name</Form.Label>
-              <Form.Control
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Email</Form.Label>
-              <Form.Control
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-              />
-            </Form.Group>
-          </Form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={handleCloseModal}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={handleFormSubmit}>
-            {editUser ? "Save Changes" : "Add User"}
-          </Button>
-        </Modal.Footer>
-      </Modal>
+      {/* Modal for Create/Edit */}
+      {showModal && (
+        <div className="modal show d-block" tabIndex="-1" role="dialog">
+          <div className="modal-dialog" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">{editMode ? "Edit Desk" : "Create New Desk"}</h5>
+                <button type="button" className="btn-close" onClick={handleCloseModal}></button>
+              </div>
+              <div className="modal-body">
+                <form>
+                  <div className="mb-3">
+                    <label htmlFor="deskTitle" className="form-label">Title</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      id="deskTitle"
+                      name="Title"
+                      value={formData.Title}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="deskDescription" className="form-label">Description</label>
+                    <textarea
+                      className="form-control"
+                      id="deskDescription"
+                      name="Description"
+                      value={formData.Description}
+                      onChange={handleChange}
+                    ></textarea>
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="deskFloor" className="form-label">Floor</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      id="deskFloor"
+                      name="Floor"
+                      value={formData.Floor}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <label htmlFor="active" className="form-label">Active</label>
+                    <select
+                      className="form-control"
+                      id="active"
+                      name="Active"
+                      value={formData.Active}
+                      onChange={handleChange}
+                    >
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+                </form>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-primary" onClick={handleSave}>
+                  {editMode ? "Save Changes" : "Create Desk"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for View */}
+      {viewData && (
+        <div className="modal show d-block" tabIndex="-1" role="dialog">
+          <div className="modal-dialog" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">View Desk Details</h5>
+                <button type="button" className="btn-close" onClick={handleCloseModal}></button>
+              </div>
+              <div className="modal-body">
+                <dl>
+                  <dt>Title</dt>
+                  <dd>{viewData.Title}</dd>
+                  <dt>Description</dt>
+                  <dd>{viewData.Description}</dd>
+                  <dt>Floor</dt>
+                  <dd>{viewData.Floor}</dd>
+                  <dt>Created</dt>
+                  <dd>{new Date(viewData.Created).toLocaleString()}</dd>
+                  <dt>Modified</dt>
+                  <dd>{new Date(viewData.Modified).toLocaleString()}</dd>
+                  <dt>Active</dt>
+                  <dd>{viewData.Active ? "Yes" : "No"}</dd>
+                  <dt>Author ID</dt>
+                  <dd>{viewData.AuthorId}</dd>
+                  <dt>GUID</dt>
+                  <dd>{viewData.GUID}</dd>
+                </dl>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <table className="table table-bordered mt-3">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Description</th>
+            <th>Floor</th>
+            <th>Active</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredItems.map((item) => (
+            <tr key={item.Id}>
+              <td>{item.Id}</td>
+              <td>{item.Title}</td>
+              <td>{item.Description}</td>
+              <td>{item.Floor}</td>
+              <td>{item.Active ? "Yes" : "No"}</td>
+              <td>
+                <button className="btn btn-info btn-sm" onClick={() => handleView(item)}>
+                  View
+                </button>{" "}
+                <button className="btn btn-warning btn-sm" onClick={() => handleEdit(item)}>
+                  Edit
+                </button>{" "}
+                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item.Id)}>
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 };

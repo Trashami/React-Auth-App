@@ -1,6 +1,7 @@
 .app-container {
   display: flex;
   flex-direction: row;
+
 }
 
 .sidebar {
@@ -101,13 +102,21 @@
   justify-content: space-between;
 }
 
+.card {
+  display: flex;
+  position: absolute;
+  top: 75px;
+  right: 15px;
+}
+
 @media (max-width: 768px) {
   .app-container {
     flex-direction: column;
+    width: fit-content;
   }
 
   .sidebar {
-    width: 100%;
+    width: 100vw;
     height: 55px;
     position: static;
     top: 55px;
@@ -151,4 +160,12 @@
     margin-top: 20px; 
     transition: margin-top 0.3s ease;
   }
+
+  .card {
+    display: flex;
+    position: absolute;
+    top: 115px;
+    right: 15px;
+  }
+
 }

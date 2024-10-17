@@ -1,9 +1,7 @@
 {
-    "appName": "React GeoJason App",
-    "apiSources": {
-      "userApi": "https://jsonplaceholder.typicode.com/users",
-      "productApi": "https://api.tvmaze.com/shows"
-    }
+  "appName": "React GeoJason App",
+  "apiSources": {
+    "userApi": "https://tularecountycagcc.sharepoint.com/sites/TCDevSite2/workflows/_api/web/lists/getByTitle('Desks List')/items",
+    "productApi": "https://api.tvmaze.com/shows"
   }
-  
-  
+}
