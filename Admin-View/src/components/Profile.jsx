@@ -76,9 +76,14 @@ const Profile = ({ userApi }) => {
     setShowModal(true);
   };
 
-  const handleEdit = (item) => {
-    setFormData({ Title: item.Title, Description: item.Description, Floor: item.Floor, Active: item.Active ? "true" : "false" });
-    setSelectedItemId(item.Id);
+  const handleEdit = (item) => { 
+    setFormData({ 
+      Title: item.Title, 
+      Description: item.Description, 
+      Floor: item.Floor, 
+      Active: item.Active ? "true" : "false" 
+    });
+    setSelectedItemId(item.Id); 
     setEditMode(true);
     setShowModal(true);
   };
@@ -91,17 +96,20 @@ const Profile = ({ userApi }) => {
     if (window.confirm("Are you sure you want to delete this desk?")) {
       try {
         const tokenResponse = await instance.acquireTokenSilent({
-          ...loginRequest,
+          ...silentRequest,
           account: user,
         });
 
         const apiUrl = `${userApi}(${itemId})`;
+        console.log(apiUrl);
 
         const response = await fetch(apiUrl, {
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${tokenResponse.accessToken}`,
             Accept: "application/json",
+            "Content-Type": "application/json",
+            "If-Match": "*", 
           },
         });
 
@@ -120,19 +128,41 @@ const Profile = ({ userApi }) => {
   const handleSave = async () => {
     try {
       const tokenResponse = await instance.acquireTokenSilent({
-        ...loginRequest,
+        ...silentRequest,
         account: user,
       });
-
-      const method = editMode ? "PATCH" : "POST";
+  
       const apiUrl = editMode ? `${userApi}(${selectedItemId})` : userApi;
-
+      
+      let etag = "*"; 
+      
+      if (editMode) {
+        
+        const etagResponse = await fetch(apiUrl, {
+          headers: {
+            Authorization: `Bearer ${tokenResponse.accessToken}`,
+            Accept: "application/json",
+          },
+        });
+        
+        if (!etagResponse.ok) {
+          const errorText = await etagResponse.text();
+          throw new Error(`HTTP error! Status: ${etagResponse.status}, Message: ${errorText}`);
+        }
+  
+        const itemData = await etagResponse.json();
+        etag = itemData['odata.etag'] || itemData['@odata.etag'];
+      }
+      
+      const method = editMode ? "PATCH" : "POST";
+      
       const response = await fetch(apiUrl, {
         method,
         headers: {
           Authorization: `Bearer ${tokenResponse.accessToken}`,
           Accept: "application/json",
           "Content-Type": "application/json",
+          "If-Match": etag, 
         },
         body: JSON.stringify({
           Title: formData.Title,
@@ -141,25 +171,36 @@ const Profile = ({ userApi }) => {
           Active: formData.Active === "true",
         }),
       });
-
+      
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
       }
 
-      const updatedItem = await response.json();
-      if (editMode) {
-        setItems(items.map((item) => (item.Id === selectedItemId ? updatedItem : item)));
-      } else {
+      let updatedItem = null;
+      const responseText = await response.text();
+      if (responseText) {
+        updatedItem = JSON.parse(responseText); 
+      }
+  
+
+      if (editMode && updatedItem) {
+        setItems((prevItems) =>
+          prevItems.map((item) => (item.Id === selectedItemId ? updatedItem : item))
+        );
+      } else if (updatedItem) {
         setItems((prevItems) => [...prevItems, updatedItem]);
       }
-
+  
+      await fetchSharePointData();
+  
       handleCloseModal();
     } catch (error) {
       console.error("Error saving desk:", error);
     }
   };
-
+  
+  
   const handleCloseModal = () => {
     setShowModal(false);
     setViewData(null);
